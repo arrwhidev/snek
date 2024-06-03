@@ -10,7 +10,7 @@ float GetRandomFloat(float a, float b) {
     return ((b - a) * ((float)rand() / RAND_MAX)) + a;
 }
 
-// globals
+// constants
 
 const int WIDTH           = 320;
 const int HEIGHT          = 240;
@@ -22,8 +22,12 @@ const int DIRECTION_DOWN  = 1;
 const int DIRECTION_LEFT  = 2;
 const int DIRECTION_RIGHT = 3;
 
+// variables
+
 int score = 0;
 Shader bloomShader;
+
+// interfaces
 
 class GameObject {
 public:
@@ -31,15 +35,12 @@ public:
     virtual void update(float dt) = 0;
 };
 
-class UI : public GameObject {
-public:
-    void render() override {
-        std::string scoreText = "score: " + std::to_string(score);
-        DrawText(scoreText.c_str(), 10, 10, 10, BLACK);
-    }
-
-    void update(float dt) override {}
+class Scene : public GameObject {
+protected:
+    Camera2D camera;
 };
+
+// classes
 
 class Particle : public GameObject {
 private:
@@ -233,17 +234,17 @@ public:
                     break;
             }
 
-            // check bounds
+            // check oob
             if (this->body.front().x < 0) {
                 newHead.x = WIDTH - BLOCK_WIDTH;
             }
-            if (this->body.front().x > WIDTH) {
+            if (this->body.front().x + BLOCK_WIDTH > WIDTH) {
                 newHead.x = 0;
             }
             if (this->body.front().y < 0) {
                 newHead.y = HEIGHT - BLOCK_WIDTH;
             }
-            if (this->body.front().y > HEIGHT) {
+            if (this->body.front().y + BLOCK_HEIGHT > HEIGHT) {
                 newHead.y = 0;
             }
 
@@ -287,75 +288,58 @@ public:
     }
 };
 
-int main(void) {
-    InitWindow(WIDTH * SCALING_FACTOR, HEIGHT * SCALING_FACTOR, "snek");
-    SetTargetFPS(60);
-    bloomShader = LoadShader(0, TextFormat("bloom.fs", 330));
+class GameUI : public GameObject {
+public:
+    void render() override {
+        std::string scoreText = "score: " + std::to_string(score);
+        DrawText(scoreText.c_str(), 10, 10, 10, BLACK);
+    }
 
-    Snake snek({ WIDTH / 2, HEIGHT / 2 }, DIRECTION_LEFT);
-    Food food;
-    UI ui;
-    std::vector<ParticleEmitter*> emitters;
+    void update(float dt) override {}
+};
 
-    Camera2D camera = { 0 };
-    camera.rotation = 0.0f;
-    camera.zoom = 1.0f;
+// scenes
 
+class GameScene : public Scene { 
+private:
     RenderTexture2D renderTexture = LoadRenderTexture(WIDTH, HEIGHT);
     RenderTexture2D uiTexture = LoadRenderTexture(WIDTH, HEIGHT);
-    while (!WindowShouldClose()) {
-        /**
-         * Update 
-         */
-        float dt = GetFrameTime();
+    Snake snake = Snake({ WIDTH / 2, HEIGHT / 2 }, DIRECTION_LEFT);
+    Food food;
+    GameUI ui;
 
-        if(IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
-            emitters.push_back(new ParticleEmitter({(float)GetMouseX()/SCALING_FACTOR, (float)GetMouseY()/SCALING_FACTOR}));
+public:
+    GameScene() { 
+        this->camera = { 0 };
+        this->camera.rotation = 0.0f;
+        this->camera.zoom = 1.0f;
+    }
+    
+    void update(float dt) override {
+        snake.update(dt);
+        food.update(dt);
+
+        if (CheckCollisionRecs(snake.getHead(), food.getRect())) {
+            food.eaten();
+            snake.grow();
+            score++;
         }
 
-        // snek.update(dt);
-        // food.update(dt);
-        // for (auto emitter = emitters.begin(); emitter != emitters.end(); ) {
-        //     (*emitter)->update(dt);
-        //     if (!(*emitter)->isAlive()) {
-        //         delete *emitter;
-        //         emitter = emitters.erase(emitter);
-        //     } else {
-        //         ++emitter;
-        //     }
-        // }
-        for (auto &emitter : emitters)
-        {
-            emitter->update(dt);
-        }
-        
-        
-        // check collisions
-        // if (CheckCollisionRecs(snek.getHead(), food.getRect())) {
-        //     emitters.push_back(new ParticleEmitter({food.getRect().x, food.getRect().y}));
-        //     food.eaten();
-        //     snek.grow();
-        //     score++;
-        // }
         // TODO: add snake collide with itself
+    }
 
-        /**
-         * Render
-         */
-
-        // Render to texture at internal resolution
+    void render() override {
+        // Render game objects to texture at internal resolution
         BeginTextureMode(renderTexture);
         ClearBackground(WHITE);
         BeginMode2D(camera);
-            // snek.render();
-            // food.render();
-        for (auto& emitter : emitters) {
-            emitter->render();
-        }
+            snake.render();
+            food.render();
         EndTextureMode();
 
+        // Render ui to separate texture
         BeginTextureMode(uiTexture);
-        ClearBackground({0,0,0,0});
+        ClearBackground({ 0, 0, 0, 0 });
             ui.render();
         EndTextureMode();
 
@@ -372,12 +356,26 @@ int main(void) {
         // EndShaderMode();
 
         DrawTexturePro(uiTexture.texture,
-                { 0.0f, 0.0f, (float)uiTexture.texture.width, (float)-uiTexture.texture.height },
-                { 0.0f, 0.0f, (float)uiTexture.texture.width * SCALING_FACTOR, (float)uiTexture.texture.height * SCALING_FACTOR },
-                { 0.0f, 0.0f },
-                0.0f,
-                WHITE);
+            { 0.0f, 0.0f, (float)uiTexture.texture.width, (float)-uiTexture.texture.height },
+            { 0.0f, 0.0f, (float)uiTexture.texture.width * SCALING_FACTOR, (float)uiTexture.texture.height * SCALING_FACTOR },
+            { 0.0f, 0.0f },
+            0.0f,
+            WHITE);
         EndDrawing();
+    }
+};
+
+int main(void) {
+    InitWindow(WIDTH * SCALING_FACTOR, HEIGHT * SCALING_FACTOR, "snek");
+    SetTargetFPS(60);
+    bloomShader = LoadShader(0, TextFormat("bloom.fs", 330));
+
+    Scene* scene = new GameScene();
+
+    while (!WindowShouldClose()) {
+        float dt = GetFrameTime();
+        scene->update(dt);
+        scene->render();
     }
 
     CloseWindow();
