@@ -14,9 +14,11 @@ float GetRandomFloat(float a, float b) {
 
 const int WIDTH           = 320;
 const int HEIGHT          = 240;
-const int BLOCK_WIDTH     = 10;
-const int BLOCK_HEIGHT    = 10;
 const int SCALING_FACTOR  = 3;
+
+const int BLOCK_SIZE      = 5;
+const float SNAKE_MOVE_SPEED = 0.03f;
+
 const int DIRECTION_UP    = 0;
 const int DIRECTION_DOWN  = 1;
 const int DIRECTION_LEFT  = 2;
@@ -146,7 +148,12 @@ private:
 
 public:
     Food() {
-        this->rect = { 30, 30, BLOCK_WIDTH, BLOCK_HEIGHT };
+        this->rect = { 
+            std::round(GetRandomFloat(0, WIDTH - BLOCK_SIZE) / BLOCK_SIZE) * BLOCK_SIZE,
+            std::round(GetRandomFloat(0, HEIGHT - BLOCK_SIZE) / BLOCK_SIZE) * BLOCK_SIZE,
+            BLOCK_SIZE, 
+            BLOCK_SIZE 
+        };
     }
 
     void render() override {
@@ -156,8 +163,8 @@ public:
     void update(float dt) override {}
 
     void eaten() {
-        this->rect.x = GetRandomValue(0, WIDTH);
-        this->rect.y = GetRandomValue(0, HEIGHT);
+        this->rect.x = std::round(GetRandomFloat(0, WIDTH - BLOCK_SIZE) / BLOCK_SIZE) * BLOCK_SIZE;
+        this->rect.y = std::round(GetRandomFloat(0, HEIGHT - BLOCK_SIZE) / BLOCK_SIZE) * BLOCK_SIZE;
     }
 
     Rectangle getRect() {
@@ -176,10 +183,10 @@ public:
         this->direction = direction;
 
         this->body.push_back(start);
-        this->body.push_back({start.x + (BLOCK_WIDTH * 1), start.y});
-        this->body.push_back({start.x + (BLOCK_WIDTH * 2), start.y});
-        this->body.push_back({start.x + (BLOCK_WIDTH * 3), start.y});
-        this->body.push_back({start.x + (BLOCK_WIDTH * 4), start.y});
+        this->body.push_back({start.x + (BLOCK_SIZE  * 1), start.y});
+        this->body.push_back({start.x + (BLOCK_SIZE  * 2), start.y});
+        this->body.push_back({start.x + (BLOCK_SIZE  * 3), start.y});
+        this->body.push_back({start.x + (BLOCK_SIZE  * 4), start.y});
     }
 
     void render() override {
@@ -187,8 +194,8 @@ public:
             DrawRectangle(
                 segment.x,
                 segment.y,
-                BLOCK_WIDTH,
-                BLOCK_HEIGHT,
+                BLOCK_SIZE ,
+                BLOCK_SIZE,
                 RED);
         }
     }
@@ -208,7 +215,7 @@ public:
 
     void update(float dt) override {
         this->moveTimer += dt;
-        if (this->moveTimer >= 0.05f) {
+        if (this->moveTimer >= SNAKE_MOVE_SPEED) {
             this->direction = getDirectionFromInput();
 
             Vector2 newHead = { 
@@ -219,16 +226,16 @@ public:
             switch (this->direction)
             {
                 case DIRECTION_UP:
-                    newHead.y -= BLOCK_HEIGHT;
+                    newHead.y -= BLOCK_SIZE;
                     break;
                 case DIRECTION_DOWN:
-                    newHead.y += BLOCK_HEIGHT;
+                    newHead.y += BLOCK_SIZE;
                     break;
                 case DIRECTION_LEFT:
-                    newHead.x -= BLOCK_WIDTH;
+                    newHead.x -= BLOCK_SIZE ;
                     break;
                 case DIRECTION_RIGHT:
-                    newHead.x += BLOCK_WIDTH;
+                    newHead.x += BLOCK_SIZE ;
                     break;
                 default:
                     break;
@@ -236,15 +243,15 @@ public:
 
             // check oob
             if (this->body.front().x < 0) {
-                newHead.x = WIDTH - BLOCK_WIDTH;
+                newHead.x = WIDTH - BLOCK_SIZE ;
             }
-            if (this->body.front().x + BLOCK_WIDTH > WIDTH) {
+            if (this->body.front().x + BLOCK_SIZE  > WIDTH) {
                 newHead.x = 0;
             }
             if (this->body.front().y < 0) {
-                newHead.y = HEIGHT - BLOCK_WIDTH;
+                newHead.y = HEIGHT - BLOCK_SIZE ;
             }
-            if (this->body.front().y + BLOCK_HEIGHT > HEIGHT) {
+            if (this->body.front().y + BLOCK_SIZE > HEIGHT) {
                 newHead.y = 0;
             }
 
@@ -258,22 +265,19 @@ public:
 
     void grow() {
         Vector2 tail = this->body.back();
-        switch (this->direction)
-        {
-            case DIRECTION_UP:
-                this->body.push_back({tail.x, tail.y + BLOCK_HEIGHT});
-                break;
-            case DIRECTION_DOWN:
-                this->body.push_back({tail.x, tail.y - BLOCK_HEIGHT});
-                break;
-            case DIRECTION_LEFT:
-                this->body.push_back({tail.x + BLOCK_WIDTH, tail.y});
-                break;
-            case DIRECTION_RIGHT:
-                this->body.push_back({tail.x - BLOCK_HEIGHT, tail.y});
-                break;
-            default:
-                break;
+        Vector2 preTail = this->body[this->body.size() - 2];
+        if (preTail.x < tail.x) {
+            // add to right of tail
+            this->body.push_back({tail.x + BLOCK_SIZE, tail.y});
+        } else if (preTail.x > tail.x) {
+            // add to left of tail
+            this->body.push_back({tail.x - BLOCK_SIZE, tail.y});
+        } else if (preTail.y < tail.y) {
+            // add below tail
+            this->body.push_back({tail.x, tail.y + BLOCK_SIZE});
+        } else {
+            // add above tail
+            this->body.push_back({tail.x, tail.y - BLOCK_SIZE});
         }
     }
 
@@ -282,8 +286,8 @@ public:
         return {
             head.x,
             head.y,
-            BLOCK_WIDTH,
-            BLOCK_HEIGHT
+            BLOCK_SIZE ,
+            BLOCK_SIZE
         };
     }
 };
@@ -366,6 +370,8 @@ public:
 };
 
 int main(void) {
+    std::srand(static_cast<unsigned int>(std::time(nullptr)));
+
     InitWindow(WIDTH * SCALING_FACTOR, HEIGHT * SCALING_FACTOR, "snek");
     SetTargetFPS(60);
     bloomShader = LoadShader(0, TextFormat("bloom.fs", 330));
