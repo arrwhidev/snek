@@ -16,13 +16,19 @@ const int WIDTH           = 320;
 const int HEIGHT          = 240;
 const int SCALING_FACTOR  = 3;
 
-const int BLOCK_SIZE      = 5;
-const float SNAKE_MOVE_SPEED = 0.03f;
-
 const int DIRECTION_UP    = 0;
 const int DIRECTION_DOWN  = 1;
 const int DIRECTION_LEFT  = 2;
 const int DIRECTION_RIGHT = 3;
+
+const int BLOCK_SIZE           = 5;
+const float SNAKE_MOVE_SPEED   = 0.03f;
+const float SPFOOD_SPAWN_TIMER = 8.0f;
+const float SPFOOD_ALIVE_TIMER = 3.5f;
+
+const int EMITTER_STATE_ACTIVE   = 0;
+const int EMITTER_STATE_STOPPED  = 1;
+const int EMITTER_STATE_STOPPING = 2;
 
 // variables
 
@@ -49,13 +55,14 @@ private:
     Vector2 position;
     Vector2 velocity;
     Vector2 acceleration;
+    Color color;
     float size;
     float life;
     float maxLife;
     float rotation;
 
 public:
-    Particle(Vector2 position, Vector2 velocity, Vector2 acceleration, float life, float size) {
+    Particle(Vector2 position, Vector2 velocity, Vector2 acceleration, float life, float size, Color color) {
         this->position = position;
         this->velocity = velocity;
         this->acceleration = acceleration;
@@ -63,6 +70,7 @@ public:
         this->maxLife = life;
         this->size = size;
         this->rotation = 0.0f;
+        this->color = color;
     }
 
     void render() override {
@@ -72,7 +80,7 @@ public:
                 { position.x, position.y, this->size, this->size },
                 { 0, 0 },
                 this->rotation,
-                ColorAlpha(BLACK, lifeBasedAlpha));
+                ColorAlpha(this->color, lifeBasedAlpha));
         }
     }
 
@@ -100,27 +108,44 @@ public:
 
 class ParticleEmitter : public GameObject {
 private:
+    int state;
+    int particlesTarget;
     int particlesAlive;
+    Vector2 position;
+    Color color;
     std::vector<Particle*> particles;
 
 public:
-    ParticleEmitter(Vector2 position) {
-        int num = 45;
-        this->particlesAlive = num;
-        for (size_t i = 0; i < num; i++)
-        {
-            float size = GetRandomValue(2.0f, 5.0f);
-            float speed = GetRandomFloat(50.0f, 135.0f);
-            float life = GetRandomFloat(20.0f, 50.0f);
-            float randomAngle = GetRandomValue(0, 360) * (PI / 180.0f);
-            Vector2 velocity = { cosf(randomAngle) * speed, sinf(randomAngle) * speed };
-            Vector2 acceleration = { 22.0f, 22.0f };
-            this->particles.push_back(new Particle(position, velocity, acceleration, life, size));
-        }        
+    ParticleEmitter(Vector2 position, int num, Color color) {
+        this->particlesAlive = 0;
+        this->particlesTarget = num;
+        this->position = position;
+        this->color = color;
+        this->state = EMITTER_STATE_STOPPED;
+    }
+
+    void addParticle() {
+        float size = GetRandomValue(2.0f, 5.0f);
+        float speed = GetRandomFloat(20.0f, 70.0f);
+        float life = GetRandomFloat(20.0f, 50.0f);
+        float randomAngle = GetRandomValue(0, 360) * (PI / 180.0f);
+        Vector2 velocity = { cosf(randomAngle) * speed, sinf(randomAngle) * speed };
+        Vector2 acceleration = { 22.0f, 22.0f };
+        
+        this->particles.push_back(new Particle(this->position, velocity, acceleration, life, size, this->color));
+        this->particlesAlive += 1;
+    }
+
+    void activate() {
+        this->state = EMITTER_STATE_ACTIVE;
+    }
+
+    void stop() {
+        this->state = EMITTER_STATE_STOPPING;
     }
 
     void render() override {
-        if (this->hasParticles()) {
+        if ((this->state == EMITTER_STATE_ACTIVE || this->state == EMITTER_STATE_STOPPING) && this->hasParticles()) {
             for (auto &p : this->particles) {
                 p->render();
             }
@@ -128,12 +153,32 @@ public:
     }
 
     void update(float dt) override {
-        if (this->hasParticles()) {
-            for (auto p : this->particles) {
-                p->update(dt);
+        if (this->state == EMITTER_STATE_ACTIVE || this->state == EMITTER_STATE_STOPPING) {
+            if (this->state == EMITTER_STATE_ACTIVE) {
+                while(particlesAlive < particlesTarget) {
+                    addParticle();
+                }
             }
 
-            // clean up dead particles
+            if (this->hasParticles()) {
+                for (auto p : this->particles) {
+                    p->update(dt);
+                }
+
+                for (auto it = particles.rbegin(); it != particles.rend();) {
+                    if (!(*it)->isAlive()) {
+                        delete *it;
+                        it = std::vector<Particle*>::reverse_iterator(particles.erase((it + 1).base()));
+                        this->particlesAlive -= 1;
+                    } else {
+                        ++it;
+                    }
+                }
+            }
+
+            if (this->state == EMITTER_STATE_STOPPING && !this->hasParticles()) {
+                this->state = EMITTER_STATE_STOPPED;
+            }
         }
     }
 
@@ -169,6 +214,66 @@ public:
 
     Rectangle getRect() {
         return this->rect;
+    }
+};
+
+class SpecialFood : public Food {
+private:
+    ParticleEmitter emitter;
+    Rectangle rect;
+    bool active = false;
+    float activeTimer = 0.0f;
+
+public:
+    SpecialFood() :
+        emitter({ 0, 0 }, 25, GOLD) {
+    }
+
+    void render() override {
+        if (this->active) {
+            DrawRectangleRec(this->rect, GOLD);
+        }
+
+        this->emitter.render();
+    }
+
+    void update(float dt) override {
+        this->activeTimer += dt;
+        if (!this->active && activeTimer >= SPFOOD_SPAWN_TIMER) {
+            // TODO: do not spawn on food or snake
+            this->rect.x = std::round(GetRandomFloat(0, WIDTH - BLOCK_SIZE) / BLOCK_SIZE) * BLOCK_SIZE;
+            this->rect.y = std::round(GetRandomFloat(0, HEIGHT - BLOCK_SIZE) / BLOCK_SIZE) * BLOCK_SIZE;
+            this->rect.width = BLOCK_SIZE;
+            this->rect.height = BLOCK_SIZE;
+
+            this->emitter = ParticleEmitter({ this->rect.x, this->rect.y }, 25, GOLD);
+            this->emitter.activate();
+
+            this->active = true;
+        }
+        
+        // if(this->active) {
+        // }
+
+        this->emitter.update(dt);
+
+        if (this->active && activeTimer >= SPFOOD_SPAWN_TIMER + SPFOOD_ALIVE_TIMER) {
+            this->active = false;
+            this->activeTimer = 0.0f;
+            this->emitter.stop();
+        }
+    }
+
+    void eaten() {
+        this->active = false;
+        this->activeTimer = 0.0f;
+    }
+
+    Rectangle getRect() {
+        if (this->active) {
+            return this->rect;
+        }
+        return {-1, -1, 0, 0};
     }
 };
 
@@ -263,6 +368,22 @@ public:
         }
     }
 
+    bool isSelfColliding() {
+        Rectangle head = this->getHead();
+        for (size_t i = 1; i < this->body.size(); i++) {
+            Rectangle segment = {
+                this->body.at(i).x,
+                this->body.at(i).y,
+                BLOCK_SIZE,
+                BLOCK_SIZE
+            };
+            if (CheckCollisionRecs(head, segment)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     void grow() {
         Vector2 tail = this->body.back();
         Vector2 preTail = this->body[this->body.size() - 2];
@@ -310,6 +431,7 @@ private:
     RenderTexture2D uiTexture = LoadRenderTexture(WIDTH, HEIGHT);
     Snake snake = Snake({ WIDTH / 2, HEIGHT / 2 }, DIRECTION_LEFT);
     Food food;
+    SpecialFood specialFood;
     GameUI ui;
 
 public:
@@ -322,11 +444,22 @@ public:
     void update(float dt) override {
         snake.update(dt);
         food.update(dt);
+        specialFood.update(dt);
 
         if (CheckCollisionRecs(snake.getHead(), food.getRect())) {
             food.eaten();
             snake.grow();
             score++;
+        }
+
+        if (CheckCollisionRecs(snake.getHead(), specialFood.getRect())) {
+            specialFood.eaten();
+            snake.grow();
+            score += 3;
+        }
+
+        if (snake.isSelfColliding()) {
+            // game over
         }
 
         // TODO: add snake collide with itself
@@ -335,10 +468,11 @@ public:
     void render() override {
         // Render game objects to texture at internal resolution
         BeginTextureMode(renderTexture);
-        ClearBackground(WHITE);
+        ClearBackground(RAYWHITE);
         BeginMode2D(camera);
             snake.render();
             food.render();
+            specialFood.render();
         EndTextureMode();
 
         // Render ui to separate texture
