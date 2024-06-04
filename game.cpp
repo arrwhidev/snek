@@ -21,7 +21,10 @@ const int DIRECTION_DOWN  = 1;
 const int DIRECTION_LEFT  = 2;
 const int DIRECTION_RIGHT = 3;
 
-const int BLOCK_SIZE           = 5;
+const int BLOCK_SIZE = 5;
+const int MAX_BOOST  = 100;
+
+const float SNAKE_ROTATION     = 0.08f;
 const float SNAKE_MOVE_SPEED   = 100.0f;
 const float SPFOOD_SPAWN_TIMER = 8.0f;
 const float SPFOOD_ALIVE_TIMER = 3.5f;
@@ -32,6 +35,7 @@ const int EMITTER_STATE_STOPPING = 2;
 
 // variables
 
+int boostRemaining = MAX_BOOST;
 int score = 0;
 Shader bloomShader;
 
@@ -278,21 +282,16 @@ public:
 
 class Snake : public GameObject {
 private:
-    Vector2 velocity;
-    float rotation = 0.0f;
+    float rotation = PI; // Start facing left
     float moveTimer = 0.0f;
-    int direction;
     std::vector<Vector2> body;
     
 public:
-    Snake(Vector2 start, int direction) {
-        this->direction = direction;
-
-        this->body.push_back(start);
-        this->body.push_back({start.x + (BLOCK_SIZE  * 1), start.y});
-        this->body.push_back({start.x + (BLOCK_SIZE  * 2), start.y});
-        this->body.push_back({start.x + (BLOCK_SIZE  * 3), start.y});
-        this->body.push_back({start.x + (BLOCK_SIZE  * 4), start.y});
+    Snake(Vector2 start) {
+        // Assuming snake is facing left
+        for (size_t i = 0; i < 8; i++) {
+            this->body.push_back({start.x + (BLOCK_SIZE * i), start.y});
+        }
     }
 
     void render() override {
@@ -300,30 +299,31 @@ public:
             DrawRectangle(
                 segment.x,
                 segment.y,
-                BLOCK_SIZE ,
+                BLOCK_SIZE,
                 BLOCK_SIZE,
                 RED);
         }
     }
 
-    int getDirectionFromInput() {
-        if (IsKeyDown(KEY_UP))
-            return DIRECTION_UP;
-        else if (IsKeyDown(KEY_DOWN))
-            return DIRECTION_DOWN;
-        else if (IsKeyDown(KEY_LEFT))
-            return DIRECTION_LEFT;
-        else if (IsKeyDown(KEY_RIGHT))
-            return DIRECTION_RIGHT;
-        else 
-            return this->direction;
-    }
-
     void update(float dt) override {
         if (IsKeyDown(KEY_RIGHT)) {
-            this->rotation += 0.08f;
+            this->rotation += SNAKE_ROTATION;
         } else if (IsKeyDown(KEY_LEFT)) {
-            this->rotation -= 0.08f;
+            this->rotation -= SNAKE_ROTATION;
+        }
+
+        bool boost = false;
+        if (IsKeyDown(KEY_UP) && boostRemaining > 5) {
+            boost = true;
+            boostRemaining -= 5;
+            if (boostRemaining < 0) {
+                boostRemaining = 0;
+            }
+        } else {
+            boostRemaining++;
+            if (boostRemaining > MAX_BOOST) {
+                boostRemaining = MAX_BOOST;
+            }
         }
 
         if (IsKeyPressed(KEY_G)) {
@@ -334,26 +334,30 @@ public:
             SNAKE_MOVE_SPEED * std::cos(this->rotation),
             SNAKE_MOVE_SPEED * std::sin(this->rotation)
         };
-
+        if (boost) {
+            velocity.x *= 2.3f;
+            velocity.y *= 2.3f;
+        }
         Vector2 newHead = { 
-            this->body[0].x + velocity.x * dt,
-            this->body[0].y + velocity.y * dt
+            this->body.front().x + velocity.x * dt,
+            this->body.front().y + velocity.y * dt
         };
 
-        // check oob
-        if (this->body.front().x < 0) {
-            newHead.x = WIDTH - BLOCK_SIZE ;
+        // Wrap around bounds
+        if (newHead.x < 0) {
+            newHead.x = WIDTH - BLOCK_SIZE;
         }
-        if (this->body.front().x + BLOCK_SIZE  > WIDTH) {
+        if (newHead.x + BLOCK_SIZE > WIDTH) {
             newHead.x = 0;
         }
-        if (this->body.front().y < 0) {
-            newHead.y = HEIGHT - BLOCK_SIZE ;
+        if (newHead.y < 0) {
+            newHead.y = HEIGHT - BLOCK_SIZE;
         }
-        if (this->body.front().y + BLOCK_SIZE > HEIGHT) {
+        if (newHead.y + BLOCK_SIZE > HEIGHT) {
             newHead.y = 0;
         }
 
+        // Add new head and pop tail
         this->body.insert(body.begin(), newHead);
         this->body.pop_back();
     }
@@ -397,21 +401,49 @@ public:
         return {
             head.x,
             head.y,
-            BLOCK_SIZE ,
+            BLOCK_SIZE,
             BLOCK_SIZE
         };
     }
 };
 
-class GameUI : public GameObject {
+class BoostUI : public GameObject {
 public:
     void render() override {
-        std::string scoreText = "score: " + std::to_string(score);
-        DrawText(scoreText.c_str(), 10, 10, 10, BLACK);
+        Color c;
+        int boostPercent = 76 * boostRemaining / 100;
+        if (boostPercent < 25) {
+            c = RED;
+        } else if (boostPercent < 50) {
+            c = ORANGE;
+        } else {
+            c = GREEN;
+        }
+
+        DrawRectangleLines(WIDTH / 2 - 40, 5, 80, 9, BLACK);
+        DrawRectangle((WIDTH / 2 - 40) + 2, 5 + 2, boostPercent, 5, c);
+
     }
 
     void update(float dt) override {}
 };
+
+class GameUI : public GameObject {
+private:
+    BoostUI boost;
+
+public:
+    void render() override {
+        std::string scoreText = std::to_string(score);
+        DrawText(scoreText.c_str(), 5, 5, 1, BLACK);
+
+        boost.render();
+    }
+
+    void update(float dt) override {}
+};
+
+
 
 // scenes
 
@@ -419,7 +451,7 @@ class GameScene : public Scene {
 private:
     RenderTexture2D renderTexture = LoadRenderTexture(WIDTH, HEIGHT);
     RenderTexture2D uiTexture = LoadRenderTexture(WIDTH, HEIGHT);
-    Snake snake = Snake({ WIDTH / 2, HEIGHT / 2 }, DIRECTION_LEFT);
+    Snake snake = Snake({ WIDTH / 2, HEIGHT / 2 });
     Food food;
     SpecialFood specialFood;
     GameUI ui;
@@ -467,6 +499,7 @@ public:
         BeginTextureMode(uiTexture);
         ClearBackground({ 0, 0, 0, 0 });
             ui.render();
+
         EndTextureMode();
 
         // Render the texture and scale it
