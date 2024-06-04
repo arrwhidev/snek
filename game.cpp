@@ -230,11 +230,11 @@ public:
     }
 
     void render() override {
+        this->emitter.render();
+
         if (this->active) {
             DrawRectangleRec(this->rect, GOLD);
         }
-
-        this->emitter.render();
     }
 
     void update(float dt) override {
@@ -252,9 +252,6 @@ public:
             this->active = true;
         }
         
-        // if(this->active) {
-        // }
-
         this->emitter.update(dt);
 
         if (this->active && activeTimer >= SPFOOD_SPAWN_TIMER + SPFOOD_ALIVE_TIMER) {
@@ -267,13 +264,14 @@ public:
     void eaten() {
         this->active = false;
         this->activeTimer = 0.0f;
+        this->emitter.stop();
     }
 
     Rectangle getRect() {
         if (this->active) {
             return this->rect;
         }
-        return {-1, -1, 0, 0};
+        return { -1, -1, 0, 0 };
     }
 };
 
@@ -459,10 +457,8 @@ public:
         }
 
         if (snake.isSelfColliding()) {
-            // game over
+            // TODO: game over
         }
-
-        // TODO: add snake collide with itself
     }
 
     void render() override {
