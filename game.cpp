@@ -22,7 +22,7 @@ const int DIRECTION_LEFT  = 2;
 const int DIRECTION_RIGHT = 3;
 
 const int BLOCK_SIZE           = 5;
-const float SNAKE_MOVE_SPEED   = 0.03f;
+const float SNAKE_MOVE_SPEED   = 100.0f;
 const float SPFOOD_SPAWN_TIMER = 8.0f;
 const float SPFOOD_ALIVE_TIMER = 3.5f;
 
@@ -205,7 +205,8 @@ public:
         DrawRectangleRec(this->rect, BLUE);
     }
 
-    void update(float dt) override {}
+    void update(float dt) override {
+    }
 
     void eaten() {
         this->rect.x = std::round(GetRandomFloat(0, WIDTH - BLOCK_SIZE) / BLOCK_SIZE) * BLOCK_SIZE;
@@ -277,6 +278,8 @@ public:
 
 class Snake : public GameObject {
 private:
+    Vector2 velocity;
+    float rotation = 0.0f;
     float moveTimer = 0.0f;
     int direction;
     std::vector<Vector2> body;
@@ -317,53 +320,42 @@ public:
     }
 
     void update(float dt) override {
-        this->moveTimer += dt;
-        if (this->moveTimer >= SNAKE_MOVE_SPEED) {
-            this->direction = getDirectionFromInput();
-
-            Vector2 newHead = { 
-                this->body[0].x,
-                this->body[0].y
-            };
-
-            switch (this->direction)
-            {
-                case DIRECTION_UP:
-                    newHead.y -= BLOCK_SIZE;
-                    break;
-                case DIRECTION_DOWN:
-                    newHead.y += BLOCK_SIZE;
-                    break;
-                case DIRECTION_LEFT:
-                    newHead.x -= BLOCK_SIZE ;
-                    break;
-                case DIRECTION_RIGHT:
-                    newHead.x += BLOCK_SIZE ;
-                    break;
-                default:
-                    break;
-            }
-
-            // check oob
-            if (this->body.front().x < 0) {
-                newHead.x = WIDTH - BLOCK_SIZE ;
-            }
-            if (this->body.front().x + BLOCK_SIZE  > WIDTH) {
-                newHead.x = 0;
-            }
-            if (this->body.front().y < 0) {
-                newHead.y = HEIGHT - BLOCK_SIZE ;
-            }
-            if (this->body.front().y + BLOCK_SIZE > HEIGHT) {
-                newHead.y = 0;
-            }
-
-            // add new head & remove tail
-            this->body.insert(body.begin(), newHead);
-            this->body.pop_back();
-            
-            this->moveTimer = 0.0f;
+        if (IsKeyDown(KEY_RIGHT)) {
+            this->rotation += 0.08f;
+        } else if (IsKeyDown(KEY_LEFT)) {
+            this->rotation -= 0.08f;
         }
+
+        if (IsKeyPressed(KEY_G)) {
+            this->grow();
+        }
+
+        Vector2 velocity = {
+            SNAKE_MOVE_SPEED * std::cos(this->rotation),
+            SNAKE_MOVE_SPEED * std::sin(this->rotation)
+        };
+
+        Vector2 newHead = { 
+            this->body[0].x + velocity.x * dt,
+            this->body[0].y + velocity.y * dt
+        };
+
+        // check oob
+        if (this->body.front().x < 0) {
+            newHead.x = WIDTH - BLOCK_SIZE ;
+        }
+        if (this->body.front().x + BLOCK_SIZE  > WIDTH) {
+            newHead.x = 0;
+        }
+        if (this->body.front().y < 0) {
+            newHead.y = HEIGHT - BLOCK_SIZE ;
+        }
+        if (this->body.front().y + BLOCK_SIZE > HEIGHT) {
+            newHead.y = 0;
+        }
+
+        this->body.insert(body.begin(), newHead);
+        this->body.pop_back();
     }
 
     bool isSelfColliding() {
