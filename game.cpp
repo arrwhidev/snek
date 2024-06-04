@@ -362,22 +362,6 @@ public:
         this->body.pop_back();
     }
 
-    bool isSelfColliding() {
-        Rectangle head = this->getHead();
-        for (size_t i = 1; i < this->body.size(); i++) {
-            Rectangle segment = {
-                this->body.at(i).x,
-                this->body.at(i).y,
-                BLOCK_SIZE,
-                BLOCK_SIZE
-            };
-            if (CheckCollisionRecs(head, segment)) {
-                return true;
-            }
-        }
-        return false;
-    }
-
     void grow() {
         Vector2 tail = this->body.back();
         Vector2 preTail = this->body[this->body.size() - 2];
@@ -443,8 +427,6 @@ public:
     void update(float dt) override {}
 };
 
-
-
 // scenes
 
 class GameScene : public Scene { 
@@ -478,10 +460,6 @@ public:
             specialFood.eaten();
             snake.grow();
             score += 3;
-        }
-
-        if (snake.isSelfColliding()) {
-            // TODO: game over
         }
     }
 
@@ -530,9 +508,9 @@ int main(void) {
     InitWindow(WIDTH * SCALING_FACTOR, HEIGHT * SCALING_FACTOR, "snek");
     SetTargetFPS(60);
     bloomShader = LoadShader(0, TextFormat("bloom.fs", 330));
-
+    
     Scene* scene = new GameScene();
-
+    
     while (!WindowShouldClose()) {
         float dt = GetFrameTime();
         scene->update(dt);
